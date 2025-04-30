@@ -1,0 +1,40 @@
+# --- Dependencies ---
+node_modules/         # Ignore Node.js dependencies
+venv/                 # Ignore Python virtual environments
+__pycache__/          # Ignore Python compiled files
+
+# --- Nuxt/Frontend Specific ---
+frontend/.nuxt/       # Ignore Nuxt build cache
+frontend/.output/     # Ignore Nuxt build output
+frontend/dist/        # Ignore common frontend build output directory
+
+# --- Backend/Python Specific ---
+backend/*.pyc         # Ignore Python compiled files
+backend/*.pyd
+backend/*.so
+backend/*.egg-info/   # Ignore Python package metadata
+backend/build/
+backend/develop-eggs/
+backend/dist/
+backend/eggs/
+
+# --- OS Specific ---
+.DS_Store # macOS
+Thumbs.db # Windows
+
+# --- IDE Specific ---
+.idea/        # PyCharm
+.vscode/      # VS Code (optional, depending on what you want to share)
+*.iml         # IntelliJ/Android Studio etc.
+
+# --- Runtime Data ---
+backend/photos/  # Ignore the directory where photos are saved by the backend
+*.log            # Ignore log files
+
+# --- Environment Files (if they contain secrets) ---
+*.env*
+
+# --- Batch/Shell Scripts (only ignore if they contain sensitive info or should not be shared) ---
+# run-nuxt.bat
+# run-backend.bat
+# tools/run-all.bat
