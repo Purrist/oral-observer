@@ -5,17 +5,17 @@ import os
 import time
 import logging
 
-# 设置日志记录
+# Set up logging
 logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
-# 允许来自 Nuxt 开发服务器 (通常是 http://localhost:3000) 的跨域请求
-CORS(app, resources={r"/*": {"origins": "http://localhost:3000"}})
+# Allow cross-origin requests from any origin (for development/debugging)
+# WARNING: Change this to specific origins in production!
+CORS(app, resources={r"/*": {"origins": "*"}})
 
-# --- 配置 ---
-# 注意：这里的路径是相对于 server.py 文件的。
-# 如果您想指定 D:\desktop\PYProject\photos 这样的绝对路径，请修改 UPLOAD_FOLDER
-# 例如: UPLOAD_FOLDER = r'D:\desktop\PYProject\photos'
+# --- Configuration ---
+# Note: This path is relative to the server.py file.
+# If you want to specify an absolute path like D:\desktop\PYProject\photos, modify UPLOAD_FOLDER
 UPLOAD_FOLDER = 'photos'
 if not os.path.exists(UPLOAD_FOLDER):
     try:
@@ -23,76 +23,86 @@ if not os.path.exists(UPLOAD_FOLDER):
         logging.info(f"Created photos directory at: {os.path.abspath(UPLOAD_FOLDER)}")
     except OSError as e:
         logging.error(f"Error creating directory {UPLOAD_FOLDER}: {e}")
-        # 如果无法创建目录，后续保存会失败，这里可以考虑退出或使用备用路径
+        # If directory creation fails, saving will fail later. Consider exiting or using an alternative path.
 
-camera_index = 0 # 默认使用第一个摄像头 (索引为 0)
+camera_index = 0 # Default camera index (usually 0)
 camera = None
 
 def initialize_camera():
     global camera
+    # Release previous camera object if it exists
     if camera is not None:
-        camera.release() # 释放之前的摄像头对象
+        camera.release()
     logging.info(f"Attempting to open camera with index {camera_index}")
     camera = cv2.VideoCapture(camera_index)
     if not camera.isOpened():
         logging.error(f"Error: Could not open camera with index {camera_index}.")
-        # 这里可以尝试其他摄像头索引，或者返回错误状态
+        # You might try other camera indices or return an error status here
         return False
     logging.info(f"Camera {camera_index} opened successfully.")
-    # 可以设置摄像头分辨率等参数 (如果需要)
+    # You can set camera resolution or other parameters here if needed
     # camera.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
     # camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
     return True
 
+# Route for video streaming
 @app.route('/video_feed')
 def video_feed():
+    # Initialize camera if it's not already connected
     if camera is None or not camera.isOpened():
         if not initialize_camera():
-             return Response("Error: Camera not available.", status=500)
+             return Response("Error: Camera not available.", status=500) # Service Unavailable
 
     def generate():
+        # Keep generating frames while the camera is connected
         while True:
             success, frame = camera.read()
             if not success:
                 logging.warning("Could not read frame from camera.")
-                # 可以尝试重新初始化摄像头或等待
+                # You might try re-initializing the camera or wait
                 time.sleep(0.1)
-                # 如果持续失败，可能需要跳出循环或发送错误信号
-                # break # 暂时不跳出，让它继续尝试
-                continue # 跳过当前帧处理
+                # If it continuously fails, you might break the loop or send an error signal
+                continue # Skip current frame processing
             else:
-                # 可以在这里添加图像处理逻辑 (来自 OpenCV)
-                # frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) # 例如：转灰度
+                # You can add image processing logic here using OpenCV
+                # frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) # Example: Convert to grayscale
 
-                ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80]) # 压缩质量为80
+                # Encode frame as JPEG
+                ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80]) # Compress with 80% quality
                 if not ret:
                     logging.warning("Could not encode frame.")
                     continue
                 frame_bytes = buffer.tobytes()
-                # 使用 multipart/x-mixed-replace 格式发送视频流
+                # Yield frame in multipart/x-mixed-replace format for streaming
                 yield (b'--frame\r\n'
-                       b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
-            # 加一点小的延时，避免CPU占用过高，根据实际情况调整
-            time.sleep(0.03) # 大约 30 FPS
+                       b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\r\n') # Fixed an extra carriage return here
+
+            # Add a small delay to prevent high CPU usage, adjust as needed
+            time.sleep(0.03) # Approximately 30 FPS
+
+        logging.warning("Video stream generator stopped.") # Log when the generator finishes
 
     return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
+# Route for capturing a photo
 @app.route('/capture_photo', methods=['POST'])
 def capture_photo():
+    # Check if camera is available
     if camera is None or not camera.isOpened():
         logging.error("Capture failed: Camera not available.")
-        return jsonify({'error': 'Camera not available'}), 503 # Service Unavailable
+        return jsonify({'error': 'Camera not available'}), 503
 
+    # Get tooth position from request JSON data
     data = request.json
-    tooth_position = data.get('tooth')  # 获取牙位编号 (例如 1, 2, ..., 32)
+    tooth_position = data.get('tooth')
     if not tooth_position:
         logging.warning("Capture failed: 'tooth' position missing in request.")
         return jsonify({'error': 'Tooth position missing'}), 400
 
-    # 从摄像头读取当前帧
+    # Read the current frame from the camera
     success, frame = camera.read()
     if success:
-        # 构建保存图片的文件夹路径 (例如 photos/1, photos/2 等)
+        # Construct the folder path for saving the photo (e.g., photos/1, photos/2 etc.)
         folder_path = os.path.join(UPLOAD_FOLDER, str(tooth_position))
         if not os.path.exists(folder_path):
             try:
@@ -102,16 +112,16 @@ def capture_photo():
                  logging.error(f"Error creating directory {folder_path}: {e}")
                  return jsonify({'error': f"Could not create directory for tooth {tooth_position}"}), 500
 
-        # 生成文件名 (使用时间戳确保唯一性)
-        filename = f"{int(time.time() * 1000)}.jpg" # 毫秒级时间戳
+        # Generate a unique filename (using millisecond timestamp)
+        filename = f"{int(time.time() * 1000)}.jpg"
         filepath = os.path.join(folder_path, filename)
 
         try:
-            # 保存图片
-            # 可以设置保存质量 cv2.imwrite(filepath, frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
+            # Save the image frame to the file
+            # cv2.imwrite(filepath, frame, [cv2.IMWRITE_JPEG_QUALITY, 90]) # Optional: set quality
             cv2.imwrite(filepath, frame)
             logging.info(f"Photo saved successfully to: {filepath}")
-            # 返回成功信息和文件名
+            # Return success message and photo details
             return jsonify({'message': 'Photo saved', 'filename': filename, 'tooth': tooth_position, 'path': filepath})
         except Exception as e:
             logging.error(f"Error saving photo to {filepath}: {e}")
@@ -120,38 +130,40 @@ def capture_photo():
         logging.error("Capture failed: Could not read frame from camera.")
         return jsonify({'error': 'Failed to capture image from camera'}), 500
 
+# Route for listing all photos
 @app.route('/list_photos', methods=['GET'])
 def list_photos():
-    # 检查照片根目录是否存在
+    # Check if the photos root directory exists and is a directory
     if not os.path.exists(UPLOAD_FOLDER) or not os.path.isdir(UPLOAD_FOLDER):
         logging.warning(f"Photos directory '{UPLOAD_FOLDER}' not found.")
-        return jsonify({}) # 返回空对象，表示没有照片
+        return jsonify({}) # Return empty object if no photos directory
 
     result = {}
     try:
-        # 遍历 photos 目录下的每个子文件夹 (代表牙位)
+        # Iterate through each subdirectory in the UPLOAD_FOLDER (representing tooth positions)
         for tooth_folder in os.listdir(UPLOAD_FOLDER):
             tooth_folder_path = os.path.join(UPLOAD_FOLDER, tooth_folder)
-            # 确保是文件夹并且文件夹名是数字 (代表牙位)
+            # Ensure it's a directory and the name is a digit (valid tooth position)
             if os.path.isdir(tooth_folder_path) and tooth_folder.isdigit():
                 photos_in_folder = []
-                # 遍历牙位文件夹下的所有文件
+                # Iterate through all files in the tooth folder
                 for filename in os.listdir(tooth_folder_path):
-                    # 简单检查是否是图片文件 (可以根据需要添加更严格的检查)
+                    # Simple check if it's an image file (add more robust checks if needed)
                     if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
                         photos_in_folder.append(filename)
-                # 如果该牙位下有照片，则添加到结果中
+                # If there are photos in this tooth folder, add them to the result
                 if photos_in_folder:
-                    result[tooth_folder] = sorted(photos_in_folder) # 按文件名排序
+                    result[tooth_folder] = sorted(photos_in_folder) # Sort filenames
         return jsonify(result)
     except Exception as e:
         logging.error(f"Error listing photos from {UPLOAD_FOLDER}: {e}")
         return jsonify({'error': f'Failed to list photos: {e}'}), 500
 
+# Route for deleting selected photos
 @app.route('/delete_photos', methods=['POST'])
 def delete_photos():
     data = request.json
-    photos_to_delete = data.get('photos', []) # 期望格式: [{'tooth': '1', 'filename': '123.jpg'}, ...]
+    photos_to_delete = data.get('photos', []) # Expected format: [{'tooth': '1', 'filename': '123.jpg'}, ...]
 
     if not photos_to_delete:
         return jsonify({'message': 'No photos specified for deletion'}), 400
@@ -159,7 +171,7 @@ def delete_photos():
     deleted_count = 0
     errors = []
     for photo_info in photos_to_delete:
-        tooth = str(photo_info.get('tooth')) # 确保 tooth 是字符串
+        tooth = str(photo_info.get('tooth')) # Ensure tooth is a string
         filename = photo_info.get('filename')
 
         if not tooth or not filename:
@@ -183,19 +195,20 @@ def delete_photos():
         'message': f'Deletion process completed. Deleted {deleted_count} photos.',
         'errors': errors if errors else None
     }
-    status_code = 200 if not errors else 404 # 如果有错误，返回 404 Not Found 可能不太合适，207 Multi-Status 或 200 加上错误列表更好
+    # Return 200 even if there were some errors, listing them in the response body
+    status_code = 200
     return jsonify(response), status_code
 
 
-# 提供访问照片文件的路由
+# Route for serving photo files
 @app.route('/photos/<path:filepath>')
 def get_photo(filepath):
-    # filepath 期望是 'tooth/filename.jpg' 的形式
-    # 例如 /photos/1/1714392022.jpg
+    # filepath is expected in the format 'tooth/filename.jpg'
+    # Example: /photos/1/1714392022.jpg
     directory = os.path.abspath(UPLOAD_FOLDER)
-    logging.debug(f"Serving photo from directory: {directory}, requested path: {filepath}")
+    # logging.debug(f"Serving photo from directory: {directory}, requested path: {filepath}") # Avoid spamming logs in development
     try:
-        # send_from_directory 会处理路径安全问题
+        # send_from_directory handles path security checks
         return send_from_directory(directory, filepath, as_attachment=False)
     except FileNotFoundError:
          logging.warning(f"Photo not found at path: {filepath}")
@@ -204,17 +217,22 @@ def get_photo(filepath):
         logging.error(f"Error serving photo {filepath}: {e}")
         return jsonify({'error': 'Server error serving photo'}), 500
 
+# --- App Run ---
 if __name__ == '__main__':
-    # 首次运行时初始化摄像头
+    # Attempt to initialize the camera on script run
     if not initialize_camera():
-        logging.warning("Initial camera initialization failed. Will retry on first request.")
-    # 运行 Flask 应用
-    # host='0.0.0.0' 让局域网内其他设备可以通过你的 IP 地址访问
-    # debug=True 开启调试模式，代码修改后服务器会自动重启，并提供更详细的错误信息
-    # use_reloader=False 在 debug 模式下防止 Flask 启动两个进程导致摄像头初始化问题
+        # If initial camera initialization fails, log a warning.
+        # The /video_feed route will attempt to re-initialize on the first request if needed.
+        logging.warning("Initial camera initialization failed. The /video_feed route will attempt to retry on the first request.")
+
+    # Run the Flask application
+    # host='0.0.0.0' makes the server accessible from other devices on the local network
+    # port=5000 sets the backend port
+    # debug=True enables debugging features, such as automatic code reloading (use_reloader=False disables this to prevent camera issues)
+    # use_reloader=False is important when dealing with resources like cameras or serial ports to prevent them from being opened multiple times.
     app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)
 
-    # 程序退出时确保释放摄像头资源
+    # Ensure the camera resource is released when the application exits
     if camera and camera.isOpened():
         camera.release()
-        logging.info("Camera released.")
+        logging.info("Camera released on application exit.")

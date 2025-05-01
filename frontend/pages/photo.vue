@@ -1,14 +1,9 @@
 <template>
-  <!-- Main container with padding, min-height, and background -->
-  <!-- Removed bg-gray-100/dark:bg-gray-900 as it's handled by app.vue -->
-  <div class="p-6 photo-page-container min-h-screen">
-    <!-- Page title, centered -->
+  <div class="p-6 photo-page-container min-h-screen bg-gray-100">
     <h1 class="text-2xl font-bold text-center mb-6 text-gray-800 dark:text-gray-100">照片相册</h1>
 
-    <!-- Main layout: Single column, content centered -->
     <div class="max-w-screen-xl mx-auto flex flex-col bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
 
-       <!-- Button to go back to video page -->
        <div class="mb-6">
            <NuxtLink to="/video" class="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:focus:ring-offset-gray-800 transition">
               <svg xmlns="http://www.w3.org/2000/svg" class="-ml-1 mr-2 h-5 w-5 text-gray-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -18,8 +13,6 @@
            </NuxtLink>
        </div>
 
-
-      <!-- Album controls (Global Select All / Delete) -->
       <div class="controls mb-6 flex flex-col sm:flex-row items-center gap-4 flex-shrink-0">
         <button
           @click="store.toggleSelectAll"
@@ -38,18 +31,14 @@
          <span v-if="store.deleteStatus" class="text-sm ml-2 text-gray-700 dark:text-gray-300">{{ store.deleteStatus }}</span>
       </div>
 
-      <!-- Loading state for photos -->
       <div v-if="store.isLoadingPhotos" class="text-center py-10 flex-grow flex items-center justify-center text-gray-600 dark:text-gray-400">加载中...</div>
 
-      <!-- Empty album message -->
       <div v-else-if="store.allPhotos.length === 0" class="text-gray-500 dark:text-gray-400 text-center py-10 text-gray-600">
         暂无照片，请前往<NuxtLink to="/video" class="text-blue-500 dark:text-blue-400 hover:underline">视频页面</NuxtLink>拍照。
       </div>
 
-      <!-- Grouped Photo list by Tooth (Grid View) -->
       <div v-else class="flex flex-col gap-6 overflow-y-auto pr-2 max-h-[calc(100vh-250px)]">
         <div v-for="toothGroup in store.groupedPhotos" :key="toothGroup.tooth" class="border-b border-gray-200 dark:border-gray-700 pb-4 last:border-b-0">
-          <!-- Tooth Group Header with Tooth-specific Select All -->
           <div class="flex items-center justify-between mb-3">
              <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100">{{ toothGroup.tooth }} 号牙 ({{ toothGroup.photoObjects.length }})</h3>
              <button
@@ -61,7 +50,6 @@
              </button>
           </div>
 
-          <!-- Photo grid for this tooth - horizontal wrapping -->
           <div class="photo-grid-row flex flex-wrap gap-3">
             <div
                 v-for="photo in toothGroup.photoObjects"
@@ -71,18 +59,15 @@
                 @click="viewPhotoEnlarged(photo)"
                 style="width: 110px; height: 110px;"
             >
-              <!-- Checkbox for selection -->
               <input
                 type="checkbox"
                 :checked="photo.selected"
                 class="absolute top-1.5 left-1.5 z-10 h-4 w-4 cursor-pointer text-blue-600 dark:text-blue-400 focus:ring-blue-500 dark:focus:ring-blue-400 rounded"
                 @click.stop="store.toggleSelection(photo)"
               />
-              <!-- Image wrapper -->
               <div class="flex-grow overflow-hidden">
                  <img :src="photo.url" :alt="`牙位 ${photo.tooth} 照片 ${photo.filename}`" class="w-full h-full object-cover block" @error="store.handleImageError(photo)" />
               </div>
-              <!-- Photo details -->
               <p class="text-xs text-center bg-gray-100 dark:bg-gray-600 py-1 px-1 truncate text-gray-700 dark:text-gray-200 border-t border-gray-200 dark:border-gray-600">{{ photo.filename.split('.')[0].substring(0, 8) }}</p>
             </div>
           </div>
@@ -96,81 +81,52 @@
 import { onMounted } from 'vue';
 import { usePhotoStore } from '@/stores/photos';
 import { useRouter } from 'vue-router';
-// import type { Photo } from '@/stores/photos'; // Uncomment if you export Photo type
+// import type { Photo } from '@/stores/photos';
 
 const store = usePhotoStore();
 const router = useRouter();
 
-// --- Methods ---
-// Navigate to video page to view a specific photo enlarged
-const viewPhotoEnlarged = (photo: any) => { // Use 'any' or import Photo type
+const viewPhotoEnlarged = (photo: any) => {
     console.log('Navigating to video page to view photo:', photo);
-    // Navigate to the /video page and pass tooth and filename as query parameters
     router.push({ path: '/video', query: { tooth: photo.tooth, filename: photo.filename } });
 };
 
-// --- Lifecycle Hooks ---
 onMounted(() => {
   console.log('Photo page mounted. Loading photos if not loaded...');
-  // Load photos only if they haven't been loaded yet in the store
   if (store.allPhotos.length === 0 && !store.isLoadingPhotos) {
      store.loadPhotos();
   }
 });
-
-// No unmounted logic needed here as store persists
 </script>
 
 <style scoped>
-/* Scoped styles for the photo page */
 /* Note: Most styling is handled by Tailwind CSS classes in the template */
 
 .photo-page-container {
-  /* Tailwind classes handle padding, min-height */
   /* background handled by app.vue */
-  /* max-width and centering handled by max-w-screen-xl and mx-auto on the main div */
 }
-
-.photo-grid-row {
-    /* Tailwind classes handle flex, flex-wrap, gap */
-}
-
-.photo-item {
-    transition: all 0.2s ease-in-out;
-    /* Tailwind classes handle border, rounded, overflow, cursor, hover shadow, background, flex, flex-col, flex-shrink-0 */
-    /* width and height are set via inline style in the template for simplicity */
-    /* style="width: 110px; height: 110px;" */
-}
-.photo-item:hover {
-    /* Tailwind shadow-lg handled via hover:shadow-lg */
-}
-
-.photo-item img {
-    /* Tailwind classes handle width, height, object-fit, display */
-}
-
 /* Custom scrollbar styles (optional) */
 .overflow-y-auto::-webkit-scrollbar {
-    width: 6px; /* Slightly thinner */
+    width: 6px;
 }
 .overflow-y-auto::-webkit-scrollbar-track {
     background: #f1f1f1;
     border-radius: 3px;
 }
 .dark .overflow-y-auto::-webkit-scrollbar-track {
-     background: #4a5568; /* dark:bg-gray-600 */
+     background: #4a5568;
 }
 .overflow-y-auto::-webkit-scrollbar-thumb {
-    background: #a0aec0; /* Lighter gray */
+    background: #a0aec0;
     border-radius: 3px;
 }
 .dark .overflow-y-auto::-webkit-scrollbar-thumb {
-    background: #718096; /* dark:bg-gray-700 */
+    background: #718096;
 }
 .overflow-y-auto::-webkit-scrollbar-thumb:hover {
-    background: #718096; /* Darker gray on hover */
+    background: #718096;
 }
 .dark .overflow-y-auto::-webkit-scrollbar-thumb:hover {
-    background: #a0aec0; /* Lighter gray on hover */
+    background: #a0aec0;
 }
 </style>
